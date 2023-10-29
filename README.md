@@ -39,3 +39,6 @@ myGenerator.get(12.0, 34.0, 56.0); // get a 3D noise value
 Perlin.allocator.free(myGenerator.perlin.?); // when directly using a generator you will need to free its internal array manually
 Perlin.deinit(); // free internal arrays
 ```
+
+# Sample Output
+!(sample)[https://github.com/vExcess/zig-perlin3d/blob/main/demo-output.jpg?raw=true]
