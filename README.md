@@ -40,5 +40,16 @@ Perlin.allocator.free(myGenerator.perlin.?); // when directly using a generator 
 Perlin.deinit(); // free internal arrays
 ```
 
+# Argument Documentation
+`init` expects ()
+`deinit` expects ()
+`seedNoise` expects (u32)
+`noise1` expects (f64)
+`noise2` expects (f64, f64)
+`noise3` expects (f64, f64, f64)
+`PerlinGenerator.new` expects (u32)
+`PerlinGenerator.seedNoise` expects (u32)
+`PerlinGenerator.get` expects (f64, f64, f64)
+
 # Sample Output
 ![sample](https://github.com/vExcess/zig-perlin3d/blob/main/demo-output.jpg?raw=true)
