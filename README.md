@@ -41,4 +41,4 @@ Perlin.deinit(); // free internal arrays
 ```
 
 # Sample Output
-!(sample)[https://github.com/vExcess/zig-perlin3d/blob/main/demo-output.jpg?raw=true]
+![sample](https://github.com/vExcess/zig-perlin3d/blob/main/demo-output.jpg?raw=true)
