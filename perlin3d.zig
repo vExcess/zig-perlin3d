@@ -5,7 +5,7 @@
 const std = @import("std");
 
 var generalPurposeAllocator = std.heap.GeneralPurposeAllocator(.{}){};
-const allocator = generalPurposeAllocator.allocator();
+pub const allocator = generalPurposeAllocator.allocator();
 
 const PERLIN_YWRAPB: i32 = 4;
 const PERLIN_YWRAP: i32 = 1 << PERLIN_YWRAPB;
@@ -31,7 +31,7 @@ inline fn noise_fsc(i: f64) f64 {
 pub const PerlinGenerator = struct {
     perlin_octaves: i32 = 4, // default to medium smooth
     perlin_amp_falloff: f64 = 0.5, // 50% reduction/octave
-    perlin: []f64 = undefined,
+    perlin: ?[]f64 = null,
 
     pub fn new(seed: u32) PerlinGenerator {
         if (!initialized) {
@@ -67,14 +67,17 @@ pub const PerlinGenerator = struct {
         const c: u64 = 1013904223;
         var z: u32 = seed;
 
-        self.perlin = allocator.alloc(f64, PERLIN_SIZE + 1) catch unreachable;
+        if (self.perlin == null) {
+            self.perlin = allocator.alloc(f64, PERLIN_SIZE + 1) catch unreachable;
+        }
+        
         var i: usize = 0;
         while (i < PERLIN_SIZE + 1) : (i += 1) {
             // define the recurrence relationship
             z = @as(u32, @intCast((a * z + c) % m));
             // return a float in [0, 1)
             // if z = m then z / m = 0 therefore (z % m) / m < 1 always
-            self.perlin[i] = @as(f64, @floatFromInt(z)) / @as(f64, @floatFromInt(m));
+            self.perlin.?[i] = @as(f64, @floatFromInt(z)) / @as(f64, @floatFromInt(m));
         }
     }
 
@@ -106,17 +109,17 @@ pub const PerlinGenerator = struct {
             rxf = noise_fsc(xf);
             ryf = noise_fsc(yf);
 
-            n1 = self.perlin[@as(usize, @intCast(of & PERLIN_SIZE))];
-            n1 += rxf * (self.perlin[@as(usize, @intCast((of + 1) & PERLIN_SIZE))] - n1);
-            n2 = self.perlin[@as(usize, @intCast((of + PERLIN_YWRAP) & PERLIN_SIZE))];
-            n2 += rxf * (self.perlin[@as(usize, @intCast((of + PERLIN_YWRAP + 1) & PERLIN_SIZE))] - n2);
+            n1 = self.perlin.?[@as(usize, @intCast(of & PERLIN_SIZE))];
+            n1 += rxf * (self.perlin.?[@as(usize, @intCast((of + 1) & PERLIN_SIZE))] - n1);
+            n2 = self.perlin.?[@as(usize, @intCast((of + PERLIN_YWRAP) & PERLIN_SIZE))];
+            n2 += rxf * (self.perlin.?[@as(usize, @intCast((of + PERLIN_YWRAP + 1) & PERLIN_SIZE))] - n2);
             n1 += ryf * (n2 - n1);
 
             of += PERLIN_ZWRAP;
-            n2 = self.perlin[@as(usize, @intCast(of & PERLIN_SIZE))];
-            n2 += rxf * (self.perlin[@as(usize, @intCast((of + 1) & PERLIN_SIZE))] - n2);
-            n3 = self.perlin[@as(usize, @intCast((of + PERLIN_YWRAP) & PERLIN_SIZE))];
-            n3 += rxf * (self.perlin[@as(usize, @intCast((of + PERLIN_YWRAP + 1) & PERLIN_SIZE))] - n3);
+            n2 = self.perlin.?[@as(usize, @intCast(of & PERLIN_SIZE))];
+            n2 += rxf * (self.perlin.?[@as(usize, @intCast((of + 1) & PERLIN_SIZE))] - n2);
+            n3 = self.perlin.?[@as(usize, @intCast((of + PERLIN_YWRAP) & PERLIN_SIZE))];
+            n3 += rxf * (self.perlin.?[@as(usize, @intCast((of + PERLIN_YWRAP + 1) & PERLIN_SIZE))] - n3);
             n2 += ryf * (n3 - n2);
 
             n1 += noise_fsc(zf) * (n2 - n1);
@@ -148,20 +151,32 @@ pub const PerlinGenerator = struct {
     }
 };
 
-var myGenerator: PerlinGenerator = undefined;
+var myGenerator: ?PerlinGenerator = null;
 
-export fn init() void {
+pub export fn init() void {
     myGenerator = PerlinGenerator.new(0);
 }
-export fn seedNoise(n: u32) void {
-    myGenerator.seedNoise(n);
+
+pub export fn deinit() void {
+    allocator.free(sinLUT);
+    allocator.free(cosLUT);
+    if (myGenerator != null and myGenerator.?.perlin != null) {
+        allocator.free(myGenerator.?.perlin.?);
+    }
 }
-export fn noise1(a: f64) f64 {
-    return myGenerator.get(a, 0.0, 0.0);
+
+pub export fn seedNoise(n: u32) void {
+    myGenerator.?.seedNoise(n);
 }
-export fn noise2(a: f64, b: f64) f64 {
-    return myGenerator.get(a, b, 0.0);
+
+pub export fn noise1(a: f64) f64 {
+    return myGenerator.?.get(a, 0.0, 0.0);
 }
-export fn noise3(a: f64, b: f64, c: f64) f64 {
-    return myGenerator.get(a, b, c);
+
+pub export fn noise2(a: f64, b: f64) f64 {
+    return myGenerator.?.get(a, b, 0.0);
+}
+
+pub export fn noise3(a: f64, b: f64, c: f64) f64 {
+    return myGenerator.?.get(a, b, c);
 }
