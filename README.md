@@ -37,7 +37,6 @@ var myGenerator = PerlinGenerator.new(0); // create a new generator with a seed 
 myGenerator.seedNoise(123); // you can reseed the generator if you want
 myGenerator.get(12.0, 34.0, 56.0); // get a 3D noise value
 Perlin.allocator.free(myGenerator.perlin.?); // when directly using a generator you will need to free its internal array manually
-Perlin.deinit(); // free internal arrays
 ```
 
 # Argument Documentation
