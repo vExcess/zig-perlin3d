@@ -15,8 +15,7 @@ const PERLIN_SIZE: i32 = 4095;
 
 const SINCOS_PRECISION: f64 = 0.5;
 const SINCOS_LENGTH: u32 = @divTrunc(360, SINCOS_PRECISION);
-var sinLUT: []f64 = undefined;
-var cosLUT: []f64 = undefined;
+var cosLUT: [SINCOS_LENGTH]f64 = undefined;
 const DEG_TO_RAD: f64 = 3.141592653589793 / 180.0;
 
 const perlin_PI = @as(f64, @floatFromInt(SINCOS_LENGTH >> 1));
@@ -35,13 +34,9 @@ pub const PerlinGenerator = struct {
 
     pub fn new(seed: u32) PerlinGenerator {
         if (!initialized) {
-            sinLUT = allocator.alloc(f64, SINCOS_LENGTH) catch unreachable;
-            cosLUT = allocator.alloc(f64, SINCOS_LENGTH) catch unreachable;
-
             var i: usize = 0;
             while (i < SINCOS_LENGTH) : (i += 1) {
                 const if64 = @as(f64, @floatFromInt(i));
-                sinLUT[i] = std.math.sin(if64 * DEG_TO_RAD * SINCOS_PRECISION);
                 cosLUT[i] = std.math.cos(if64 * DEG_TO_RAD * SINCOS_PRECISION);
             }
             
@@ -158,8 +153,6 @@ pub export fn init() void {
 }
 
 pub export fn deinit() void {
-    allocator.free(sinLUT);
-    allocator.free(cosLUT);
     if (myGenerator != null and myGenerator.?.perlin != null) {
         allocator.free(myGenerator.?.perlin.?);
     }
