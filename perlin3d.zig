@@ -77,9 +77,9 @@ pub const PerlinGenerator = struct {
     }
 
     pub fn get(self: *PerlinGenerator, x_: f64, y_: f64, z_: f64) f64 {
-        var x = if (x_ < 0) -x_ else x_;
-        var y = if (y_ < 0) -y_ else y_;
-        var z = if (z_ < 0) -z_ else z_;
+        const x = if (x_ < 0) -x_ else x_;
+        const y = if (y_ < 0) -y_ else y_;
+        const z = if (z_ < 0) -z_ else z_;
 
         var xi = @as(i32, @intFromFloat(x));
         var yi = @as(i32, @intFromFloat(y));
