@@ -4,9 +4,6 @@
 
 const std = @import("std");
 
-var generalPurposeAllocator = std.heap.GeneralPurposeAllocator(.{}){};
-pub const allocator = generalPurposeAllocator.allocator();
-
 const PERLIN_YWRAPB: i32 = 4;
 const PERLIN_YWRAP: i32 = 1 << PERLIN_YWRAPB;
 const PERLIN_ZWRAPB: i32 = 8;
@@ -28,11 +25,12 @@ inline fn noise_fsc(i: f64) f64 {
 }
 
 pub const PerlinGenerator = struct {
+    allocatorPtr: *const std.mem.Allocator = undefined,
     perlin_octaves: i32 = 4, // default to medium smooth
     perlin_amp_falloff: f64 = 0.5, // 50% reduction/octave
     perlin: ?[]f64 = null,
 
-    pub fn new(seed: u32) PerlinGenerator {
+    pub fn init(allocator: *const std.mem.Allocator, seed: u32) !PerlinGenerator {
         if (!initialized) {
             var i: usize = 0;
             while (i < SINCOS_LENGTH) : (i += 1) {
@@ -43,13 +41,22 @@ pub const PerlinGenerator = struct {
             initialized = true;
         }
 
-        var generator = PerlinGenerator{};
-        generator.seedNoise(seed);
+        var generator = PerlinGenerator{
+            .allocatorPtr = allocator
+        };
+        try generator.seedNoise(seed);
 
         return generator;
     }
 
-    pub fn seedNoise(self: *PerlinGenerator, seed: u32) void {
+    pub fn deinit(self: *PerlinGenerator) void {
+        if (self.perlin != null) {
+            var allocator = self.allocatorPtr.*;
+            allocator.free(self.perlin.?);
+        }
+    }
+
+    pub fn seedNoise(self: *PerlinGenerator, seed: u32) !void {
         // Linear Congruential Generator
         // Variant of a Lehman Generator
         // Set to values from http://en.wikipedia.org/wiki/Numerical_Recipes
@@ -63,7 +70,8 @@ pub const PerlinGenerator = struct {
         var z: u32 = seed;
 
         if (self.perlin == null) {
-            self.perlin = allocator.alloc(f64, PERLIN_SIZE + 1) catch unreachable;
+            var allocator = self.allocatorPtr.*;
+            self.perlin = try allocator.alloc(f64, PERLIN_SIZE + 1);
         }
         
         var i: usize = 0;
@@ -146,30 +154,32 @@ pub const PerlinGenerator = struct {
     }
 };
 
-var myGenerator: ?PerlinGenerator = null;
+var GPA = std.heap.GeneralPurposeAllocator(.{}){};
+var globalAllocator = GPA.allocator();
+var globalGenerator: ?PerlinGenerator = null;
 
-pub export fn init() void {
-    myGenerator = PerlinGenerator.new(0);
+pub export fn init(seed: u32) void {    
+    globalGenerator = PerlinGenerator.init(&globalAllocator, seed) catch @panic("Failed to init PerlinGenerator");
 }
 
 pub export fn deinit() void {
-    if (myGenerator != null and myGenerator.?.perlin != null) {
-        allocator.free(myGenerator.?.perlin.?);
+    if (globalGenerator != null) {
+        globalGenerator.?.deinit();
     }
 }
 
-pub export fn seedNoise(n: u32) void {
-    myGenerator.?.seedNoise(n);
+pub export fn seedNoise(seed: u32) void {
+    globalGenerator.?.seedNoise(seed) catch unreachable;
 }
 
-pub export fn noise1(a: f64) f64 {
-    return myGenerator.?.get(a, 0.0, 0.0);
+pub export fn noise1(x: f64) f64 {
+    return globalGenerator.?.get(x, 0.0, 0.0);
 }
 
-pub export fn noise2(a: f64, b: f64) f64 {
-    return myGenerator.?.get(a, b, 0.0);
+pub export fn noise2(x: f64, y: f64) f64 {
+    return globalGenerator.?.get(x, y, 0.0);
 }
 
-pub export fn noise3(a: f64, b: f64, c: f64) f64 {
-    return myGenerator.?.get(a, b, c);
+pub export fn noise3(x: f64, y: f64, z: f64) f64 {
+    return globalGenerator.?.get(x, y, z);
 }

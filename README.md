@@ -1,58 +1,111 @@
 # Zig Perlin3D
-3D Perlin Noise in Zig
+3D, 2D, and 1D Perlin Noise in Zig
 
-This is a port of https://github.com/alterebro/perlin-noise-3d from JS into Zig which was adapted from P5.js https://github.com/processing/p5.js/blob/main/src/math/noise.js  
-This Perlin noise's output should visually equivelant to p5.js but it has been optimized to be twice as fast  
-
-# Usage From WASM
-You can use the provided perlin3d.wasm binary or you can compile it yourself via
-```sh
-zig build-exe -fno-entry -O ReleaseSmall -target wasm32-freestanding -rdynamic perlin3d.zig
-```
-Then from JavaScript:
-```js
-const wasm = new WebAssembly.Module(PERLIN3D_WASM_BUFFER);
-const wasmInstance = new WebAssembly.Instance(wasm, {});
-const Perlin = wasmInstance.exports;
-Perlin.init(); // initializes interal arrays an noise generator
-Perlin.seedNoise(123); // seeds the noise (if not called the default seed is 0)
-Perlin.noise1(12); // 1D noise
-Perlin.noise2(12, 34); // 2D noise
-Perlin.noise3(12, 34, 56); // 3D noise
-// it's not necessary to deinit when using wasm, but you can do it anyways
-Perlin.deinit();
-```
-
-# Usage From Zig
-```js
-const Perlin = @import("perlin3d.zig");
-Perlin.init(); // initializes a perlin noise generator
-Perlin.seedNoise(123); // seeds the noise (if not called the default seed is 0)
-Perlin.noise1(12.0); // 1D noise
-Perlin.noise2(12.0, 34.0); // 2D noise
-Perlin.noise3(12.0, 34.0, 56.0); // 3D noise
-Perlin.deinit(); // free internal generator
-```
-Alternatively in Zig you can access the generator directly. This is useful if you want to create multiple noise generators.
-```js
-const Perlin = @import("perlin3d.zig");
-const PerlinGenerator = Perlin.PerlinGenerator;
-var myGenerator = PerlinGenerator.new(0); // create a new generator with a seed of 0
-myGenerator.seedNoise(123); // you can reseed the generator if you want
-myGenerator.get(12.0, 34.0, 56.0); // get a 3D noise value
-Perlin.allocator.free(myGenerator.perlin.?); // when directly using a generator you will need to free its internal array manually
-```
-
-# Argument Documentation
-`init` expects ()  
-`deinit` expects ()  
-`seedNoise` expects (u32)  
-`noise1` expects (f64)  
-`noise2` expects (f64, f64)  
-`noise3` expects (f64, f64, f64)  
-`PerlinGenerator.new` expects (u32)  
-`PerlinGenerator.seedNoise` expects (u32)  
-`PerlinGenerator.get` expects (f64, f64, f64)  
+This is a port of https://github.com/alterebro/perlin-noise-3d from JS into Zig which was adapted from P5.js https://github.com/processing/p5.js/blob/main/src/math/noise.js . This Perlin noise's output should visually equivelant to p5.js but it has been optimized to be twice as fast  
 
 # Sample Output
 ![sample](https://github.com/vExcess/zig-perlin3d/blob/main/demo-output.jpg?raw=true)
+
+## Quickstart code
+### Use global API from Zig
+```ts
+const Perlin = @import("perlin3d");
+
+Perlin.init(321);
+defer Perlin.deinit();
+Perlin.seedNoise(123);
+Perlin.noise1(12.0);
+Perlin.noise2(12.0, 34.0);
+Perlin.noise3(12.0, 34.0, 56.0);
+```
+
+### Directly use PerlinGenerator from Zig
+```ts
+const Perlin = @import("perlin3d");
+const PerlinGenerator = Perlin.PerlinGenerator;
+
+var myGenerator = try PerlinGenerator.init(321);
+defer myGenerator.deinit();
+
+myGenerator.perlin_octaves = 3; // change octaves used
+myGenerator.seedNoise(123);
+myGenerator.get(12.0, 34.0, 56.0);
+```
+
+### Use global API in WASM
+```ts
+const wasm = new WebAssembly.Module(buffer);
+const wasmInstance = new WebAssembly.Instance(wasm, {});
+const Perlin = wasmInstance.exports;
+
+Perlin.init(321);
+Perlin.seedNoise(123);
+Perlin.noise1(12.0);
+Perlin.noise2(12.0, 34.0);
+Perlin.noise3(12.0, 34.0, 56.0);
+Perlin.deinit();
+```
+
+## Zig Demo
+View `demo/demo.zig` to see demo code. To run native demo locally:
+```sh
+sudo apt install libcairo2-dev
+sudo apt install libsdl2-dev
+zig run -lc -I/usr/include/SDL2 -lSDL2 -I/usr/include/cairo -lcairo -O ReleaseFast demo/demo.zig
+```
+
+## WASM Demo
+View `demo/demo.html` to see demo code. To run wasm demo locally:
+```sh
+npm install --global http-server
+http-server -o demo/demo.html
+```
+
+## Compile Library To WASM
+```sh
+zig build-exe -fno-entry -O ReleaseSmall -target wasm32-freestanding -rdynamic src/perlin3d.zig
+```
+
+## Documentation
+### Global API
+`fn init(seed: u32) void`  
+Initialize the global perlin generator. This must be done before calling the globals: seedNoise(), noise1(), noise2(), noise3(), and deinit(). This doesn't need to be called if you are directly using the PerlinGenerator struct.
+
+`fn deinit() void`  
+Deallocate the global generator in order to prevent leaking memory. If using the WASM module it is not necessary to call deinit() because the WASM VM will free all the VM's memory, however deinit() can still be called from WASM as good practice.
+
+`fn seedNoise(seed: u32) void`  
+Reseeds the global perlin generator. The generator is already seeded by the init() function so this doesn't need to be called unless you want to change the seed.
+
+`fn noise1(x: f64) f64`  
+Sample a 1D noise value. Return value is in range [0, 1].
+
+`fn noise2(x: f64, y: f64) f64`  
+Sample a 2D noise value. Return value is in range [0, 1].
+
+`fn noise3(x: f64, y: f64, z: f64) f64`  
+Sample a 3D noise value. Return value is in range [0, 1].
+
+### PerlinGenerator
+```ts
+struct PerlinGenerator {
+    // The number of octaves to be used by the noise.
+    perlin_octaves: i32 = 4, // default to medium smooth
+    // The falloff factor for each octave.
+    perlin_amp_falloff: f64 = 0.5, // 50% reduction/octave
+
+    // Initialize a PerlinGenerator. Throws if memory allocation fails.
+    fn init(allocator: *const std.mem.Allocator, seed: u32) !PerlinGenerator
+
+    // Deallocate generator's internal buffers.
+    fn deinit(self: *PerlinGenerator) void
+
+    // Reseed the generator. Throws if memory allocation fails.
+    fn seedNoise(self: *PerlinGenerator, seed: u32) !void
+
+    // Sample the noise value at a 3D coordinate. Return value is in range [0, 1].
+    fn get(self: *PerlinGenerator, x_: f64, y_: f64, z_: f64) f64
+}
+```
+
+
