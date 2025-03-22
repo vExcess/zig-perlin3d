@@ -1,6 +1,12 @@
-// ported to Zig from https://github.com/alterebro/perlin-noise-3d by Vexcess
-// which was adapted from P5.js https://github.com/processing/p5.js/blob/main/src/math/noise.js
-// this Perlin Noise's output should visually equivelant to p5.js but it has been optimized to be twice as fast
+//
+//  Zig Perlin3D
+//  Author: VExcess <github.com/vExcess>
+//  version: 2.0.0
+//
+//  This is a port of https://github.com/alterebro/perlin-noise-3d to Zig
+//  which was adapted from P5.js https://github.com/processing/p5.js/blob/main/src/math/noise.js
+//  this Perlin Noise's output should visually equivelant to p5.js but it has been optimized to be twice as fast
+//  
 
 const std = @import("std");
 
@@ -26,8 +32,8 @@ inline fn noise_fsc(i: f64) f64 {
 
 pub const PerlinGenerator = struct {
     allocatorPtr: *const std.mem.Allocator = undefined,
-    perlin_octaves: i32 = 4, // default to medium smooth
-    perlin_amp_falloff: f64 = 0.5, // 50% reduction/octave
+    octaves: i32 = 4, // default to medium smooth
+    falloff: f64 = 0.5, // 50% reduction/octave
     perlin: ?[]f64 = null,
 
     pub fn init(allocator: *const std.mem.Allocator, seed: u32) !PerlinGenerator {
@@ -106,7 +112,7 @@ pub const PerlinGenerator = struct {
         var n3: f64 = undefined;
 
         var o: i32 = 0;
-        while (o < self.perlin_octaves) : (o += 1) {
+        while (o < self.octaves) : (o += 1) {
             var of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB);
 
             rxf = noise_fsc(xf);
@@ -128,7 +134,7 @@ pub const PerlinGenerator = struct {
             n1 += noise_fsc(zf) * (n2 - n1);
 
             r += n1 * ampl;
-            ampl *= self.perlin_amp_falloff;
+            ampl *= self.falloff;
             xi <<= 1;
             xf *= 2;
             yi <<= 1;
@@ -182,4 +188,9 @@ pub export fn noise2(x: f64, y: f64) f64 {
 
 pub export fn noise3(x: f64, y: f64, z: f64) f64 {
     return globalGenerator.?.get(x, y, z);
+}
+
+pub export fn noiseDetail(octaves: i32, falloff: f64) void {
+    globalGenerator.?.octaves = octaves;
+    globalGenerator.?.falloff = falloff;
 }

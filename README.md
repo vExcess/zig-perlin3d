@@ -14,6 +14,7 @@ const Perlin = @import("perlin3d");
 Perlin.init(321);
 defer Perlin.deinit();
 Perlin.seedNoise(123);
+Perlin.noiseDetail(4, 0.5);
 Perlin.noise1(12.0);
 Perlin.noise2(12.0, 34.0);
 Perlin.noise3(12.0, 34.0, 56.0);
@@ -27,8 +28,10 @@ const PerlinGenerator = Perlin.PerlinGenerator;
 var myGenerator = try PerlinGenerator.init(321);
 defer myGenerator.deinit();
 
-myGenerator.perlin_octaves = 3; // change octaves used
+myGenerator.octaves = 3; // change octaves used
 myGenerator.seedNoise(123);
+myGenerator.octaves = 4;
+myGenerator.falloff = 0.5;
 myGenerator.get(12.0, 34.0, 56.0);
 ```
 
@@ -40,6 +43,7 @@ const Perlin = wasmInstance.exports;
 
 Perlin.init(321);
 Perlin.seedNoise(123);
+Perlin.noiseDetail(4, 0.5);
 Perlin.noise1(12.0);
 Perlin.noise2(12.0, 34.0);
 Perlin.noise3(12.0, 34.0, 56.0);
@@ -77,6 +81,9 @@ Deallocate the global generator in order to prevent leaking memory. If using the
 `fn seedNoise(seed: u32) void`  
 Reseeds the global perlin generator. The generator is already seeded by the init() function so this doesn't need to be called unless you want to change the seed.
 
+`fn noiseDetail(octaves: i32, falloff: f64) void`  
+Sets the octaves and falloff of the global generator.
+
 `fn noise1(x: f64) f64`  
 Sample a 1D noise value. Return value is in range [0, 1].
 
@@ -90,9 +97,9 @@ Sample a 3D noise value. Return value is in range [0, 1].
 ```ts
 struct PerlinGenerator {
     // The number of octaves to be used by the noise.
-    perlin_octaves: i32 = 4, // default to medium smooth
+    octaves: i32 = 4, // default to medium smooth
     // The falloff factor for each octave.
-    perlin_amp_falloff: f64 = 0.5, // 50% reduction/octave
+    falloff: f64 = 0.5, // 50% reduction/octave
 
     // Initialize a PerlinGenerator. Throws if memory allocation fails.
     fn init(allocator: *const std.mem.Allocator, seed: u32) !PerlinGenerator

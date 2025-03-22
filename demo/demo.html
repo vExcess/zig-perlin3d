@@ -29,6 +29,7 @@ fetch("/dist/perlin3d.wasm")
         
         var time = 0;
         Perlin.init(12345);
+        Perlin.noiseDetail(3, 0.5);
 
         function draw() {
             for (var x = 0; x < canvas.width; x++) {
@@ -41,7 +42,7 @@ fetch("/dist/perlin3d.wasm")
                 }
             }
 
-            time += 0.02;
+            time += 0.01;
 
             ctx.putImageData(imgData, 0, 0);
         }

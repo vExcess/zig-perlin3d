@@ -53,6 +53,7 @@ pub fn main() !void {
     // draw noise
     perlin3d.init(9973);
     defer perlin3d.deinit();
+    perlin3d.noiseDetail(3, 0.5);
 
     var time: f64 = 0.0;
 
@@ -70,13 +71,13 @@ pub fn main() !void {
                 ctx.fillRect(As.f32(x), As.f32(y), 1, 1);
             }
         }
-        time += 0.02;
+        time += 0.01;
 
         // render frame
         try myWin.render();
 
-        // wait for 16ms
-        Window.wait(16);
+        // wait for 8ms
+        Window.wait(8);
     }
 
     // clean up
