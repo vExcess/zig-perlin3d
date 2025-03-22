@@ -5,7 +5,11 @@ This is a port of https://github.com/alterebro/perlin-noise-3d from JS into Zig 
 This Perlin noise's output should visually equivelant to p5.js but it has been optimized to be twice as fast  
 
 # Usage From WASM
-You can use the provided perlin3d.wasm binary or you can compile it yourself. Then from JavaScript:
+You can use the provided perlin3d.wasm binary or you can compile it yourself via
+```sh
+zig build-exe -fno-entry -O ReleaseSmall -target wasm32-freestanding -rdynamic perlin3d.zig
+```
+Then from JavaScript:
 ```js
 const wasm = new WebAssembly.Module(PERLIN3D_WASM_BUFFER);
 const wasmInstance = new WebAssembly.Instance(wasm, {});
