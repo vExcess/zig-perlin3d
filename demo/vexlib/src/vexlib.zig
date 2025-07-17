@@ -1,4 +1,4 @@
-// vexlib - v0.0.26
+// vexlib - v0.0.28
 //
 // ABOUT
 //   vexlib is a "standard" library for writing Web Assembly compatible
@@ -32,6 +32,7 @@ pub const wasmFreestanding: bool = false;
 const std = @import("std");
 const Prng = std.Random.DefaultPrng;
 const http = std.http;
+
 
 pub var allocatorPtr: *const std.mem.Allocator = undefined;
 pub var prng: std.Random.DefaultPrng = undefined;
@@ -119,6 +120,35 @@ pub const As = struct {
     pub const @"i16T" = genCastFn(i16, true);
     pub const @"i32T" = genCastFn(i32, true);
     pub const @"i64T" = genCastFn(i64, true);
+
+    pub fn sliceCast(comptime newChildType: type, slc: anytype) []newChildType {
+        const slcTypeInfo = @typeInfo(@TypeOf(slc));
+        const newChildTypeInfo = @typeInfo(newChildType);
+        var newLen: usize = 0;
+        switch (@TypeOf(slc)) {
+            []i8, []u8, []i16, []u16, []i32, []u32, []i64, []u64, []i128, []u128, []isize, []usize => {
+                const slcChildTypeInfo = @typeInfo(slcTypeInfo.pointer.child);
+                newLen = slc.len * slcChildTypeInfo.int.bits / switch (newChildTypeInfo) {
+                    .int => newChildTypeInfo.int.bits,
+                    .float => newChildTypeInfo.float.bits,
+                    else => @panic("sliceCast doesn't support the provided types")
+                };
+            },
+            []f32, []f64 => {
+                const slcChildTypeInfo = @typeInfo(slcTypeInfo.pointer.child);
+                newLen = slc.len * slcChildTypeInfo.float.bits / switch (newChildTypeInfo) {
+                    .int => newChildTypeInfo.int.bits,
+                    .float => newChildTypeInfo.float.bits,
+                    else => @panic("sliceCast doesn't support the provided types")
+                };
+            },
+            else => {
+                @panic("sliceCast doesn't support the provided types");
+            }
+        }
+        const newSlc = @as([*]newChildType, @ptrCast(@alignCast(slc.ptr)))[0..newLen];
+        return newSlc;
+    }
 };
 
 pub const Math = struct {
@@ -135,6 +165,14 @@ pub const Math = struct {
             },
             else => @panic("Math.abs only accepts integers and floats")
         }
+    }
+
+    pub fn comptime_pow(comptime x: anytype, comptime y: anytype) @TypeOf(x, y) {
+        var out = 1;
+        var i = 0; while (i < y) : (i += 1) {
+            out *= x;
+        }
+        return out;
     }
 
     pub fn pow(x: anytype, y: anytype) @TypeOf(x, y) {
@@ -493,7 +531,7 @@ pub fn print(data_: anytype) void {
         if (wasmFreestanding) {
             stdio(1, @intFromPtr(outString.bytes.buffer.ptr), outString.len());
         } else {
-            // var temp = Array(u8).using(outString.raw());
+            // var temp = ArrayList(u8).using(outString.raw());
             // temp.len = As.u32(outString.raw().len);
             // var temp2 = temp.join(",");
             // defer temp2.dealloc();
@@ -627,7 +665,7 @@ pub fn fetch(url_: anytype, options: anytype) !HTTPResponse {
     };
 }
 
-pub fn Array(comptime T: type) type {
+pub fn ArrayList(comptime T: type) type {
     return struct {
         buffer: []T = undefined,
         len: u32 = 0,
@@ -670,8 +708,32 @@ pub fn Array(comptime T: type) type {
         }
 
         pub fn deallocContents(self: *Self) void {
-            var i: u32 = 0; while (i < self.len) : (i += 1) {
-                self.get(i).dealloc();
+            var allocator = allocatorPtr.*;
+            var i: usize = 0; while (i < self.len) : (i += 1) {
+                const item = self.buffer[i];                
+                const itemType = @TypeOf(item);
+                const itemTypeInfo = @typeInfo(itemType);
+                if (itemTypeInfo == .optional) {
+                    const childItemType = itemTypeInfo.optional.child;
+                    const childItemTypeInfo = @typeInfo(itemTypeInfo.optional.child);
+                    if (item != null) {
+                        if (childItemType == String) {
+                            item.?.dealloc();
+                        } else if (childItemTypeInfo == .@"struct" and @hasField(childItemType, "isArray") and item.?.isArray) {
+                            item.?.dealloc();
+                        } else {
+                            allocator.free(item.?);
+                        }
+                    }
+                } else {
+                    if (itemType == String) {
+                        item.dealloc();
+                    } else if (itemTypeInfo == .@"struct" and @hasField(itemType, "isArray") and item.isArray) {
+                        item.dealloc();
+                    } else {
+                        allocator.free(item);
+                    }
+                }
             }
         }
 
@@ -679,16 +741,12 @@ pub fn Array(comptime T: type) type {
             return As.u32(self.buffer.len);
         }
 
-        pub fn get(self: *const Self, idx: u32) if (@typeInfo(T) == .@"struct" or @typeInfo(T) == .@"union") *T else T {
-            if (@typeInfo(T) == .@"struct" or @typeInfo(T) == .@"union") {
-                return &self.buffer[idx];
-            } else {
-                return self.buffer[idx];
-            }
+        pub fn get(self: *const Self, idx: u32) T {
+            return self.buffer[idx];
         }
 
-        pub fn getCopy(self: *const Self, idx: u32) T {
-            return self.buffer[idx];
+        pub fn getPtr(self: *const Self, idx: u32) *T {
+            return &self.buffer[idx];
         }
 
         pub fn set(self: *Self, idx: u32, val: T) void {
@@ -824,6 +882,17 @@ pub fn Array(comptime T: type) type {
             self.len = len;
         }
 
+        pub fn ensureCapacity(self: *Self, _capacity: u32) void {
+            if (self.capacity() >= _capacity) {
+                return true;
+            }
+            var newCapacity = self.capacity();
+            while (newCapacity < _capacity) {
+                newCapacity *= 2;
+            }
+            self.resize(newCapacity);
+        }
+
         pub fn resize(self: *Self, newCapacity: u32) void {
             var allocator = allocatorPtr.*;
             var newBuffer = allocator.alloc(T, newCapacity) catch @panic("memory allocation failed");
@@ -859,6 +928,38 @@ pub fn Array(comptime T: type) type {
             self.len -= len;
         }
 
+        pub fn first(self: *Self) ?T {
+            return if (self.len > 0) self.buffer[0] else null;
+        }
+
+        pub fn last(self: *Self) ?T {
+            return if (self.len > 0) self.buffer[self.len - 1] else null;
+        }
+
+        pub fn removeFirst(self: *Self) ?T {
+            if (self.len == 0) {
+                return null;
+            }
+
+            const buff = self.buffer;
+            const firstItem = buff[0];
+            var i: usize = 0; while (i < self.len - 1) : (i += 1) {
+                buff[i] = buff[i + 1];
+            }
+            self.len -= 1;
+            return firstItem;
+        }
+
+        pub fn removeLast(self: *Self) ?T {
+            if (self.len == 0) {
+                return null;
+            }
+
+            const lastItem = self.get(self.len - 1);
+            self.len -= 1;
+            return lastItem;
+        }
+
         pub fn indexOf(self: *const Self, val: T) i32 {
             const buff = self.buffer;
             var i: usize = 0;
@@ -889,9 +990,9 @@ pub fn Array(comptime T: type) type {
                 const TypeInfo = @typeInfo(T);
                 if (TypeInfo == .@"struct" or TypeInfo == .pointer) {
                     if (@hasDecl(T, "toString")) {
-                        item = self.get(i).*.toString();
+                        item = self.get(i).toString();
                     } else {
-                        item = String.allocFrom(self.get(i).*);
+                        item = String.allocFrom(self.get(i));
                     }
                 } else if (TypeInfo == .array) {
                     item = String.alloc(1);
@@ -938,16 +1039,30 @@ pub fn Array(comptime T: type) type {
     };
 }
 
-pub const Uint8Array = Array(u8);
-pub const Int8Array = Array(i8);
-pub const Uint16Array = Array(u16);
-pub const Int16Array = Array(i16);
-pub const Uint32Array = Array(u32);
-pub const Int32Array = Array(i32);
-pub const Uint64Array = Array(u64);
-pub const Int64Array = Array(i64);
-pub const Float32Array = Array(f32);
-pub const Float64Array = Array(f64);
+pub fn zeroArray(arr: anytype) void {
+    const t = @TypeOf(arr);
+    switch (t) {
+        []comptime_int, []i8, []u8, []i16, []u16, []i32, []u32, []i64, []u64, []i128, []u128, []isize, []usize => {
+            {var i: usize = 0; while (i < arr.len) : (i += 1) {
+                arr[i] = 0;
+            }}
+        },
+        else => {
+            @panic("zeroArray doesn't support given data type");
+        }
+    }
+}
+
+pub const Uint8Array = ArrayList(u8);
+pub const Int8Array = ArrayList(i8);
+pub const Uint16Array = ArrayList(u16);
+pub const Int16Array = ArrayList(i16);
+pub const Uint32Array = ArrayList(u32);
+pub const Int32Array = ArrayList(i32);
+pub const Uint64Array = ArrayList(u64);
+pub const Int64Array = ArrayList(i64);
+pub const Float32Array = ArrayList(f32);
+pub const Float64Array = ArrayList(f64);
 
 pub const Hash = struct {
     fn FNV1a(key: []const u8) u32 {
@@ -1121,6 +1236,139 @@ pub fn Map(comptime KeyType: type, comptime ValueType: type) type {
     };
 }
 
+pub fn Queue(comptime T: type) type {
+    // NOTE: Can only store 2^31 items. Sign bit is used as a queue state flag
+    return struct {
+        arr: []T = undefined,
+        fields: packed struct { front: u31, end: u31, lastOp: u1 } = .{
+            .front = 0,
+            .end = 0,
+            .lastOp = 0,
+        },
+
+        const ADD: u1 = 1;
+        const REMOVE: u1 = 0;
+
+        const Self = @This();
+
+        pub fn alloc(_capacity: u32) Self {
+            const allocator = allocatorPtr.*;
+            return Self{
+                .arr = allocator.alloc(T, _capacity) catch @panic("Queue mem alloc fail"),
+            };
+        }
+
+        pub fn dealloc(self: *Self) void {
+            const allocator = allocatorPtr.*;
+            allocator.free(self.arr);
+        }
+
+        fn front(self: *Self) u32 {
+            return As.u32(self.fields.front);
+        }
+
+        fn end(self: *Self) u32 {
+            return As.u32(self.fields.end);
+        }
+
+        pub fn lastOperation(self: *Self) u1 {
+            return self.fields.lastOp;
+        }
+
+        pub fn size(self: *Self) u32 {
+            if (self.front() == self.end()) {
+                return switch (self.lastOperation()) {
+                    Self.REMOVE => 0,
+                    Self.ADD => As.u32(self.arr.len)
+                };
+            } else if (self.front() < self.end()) {
+                return self.end() - self.front();
+            } else { // end < front, meaning it wrapped around
+                return As.u32(self.arr.len) - self.front() + self.end();
+            }
+        }
+
+        pub fn capacity(self: *Self) u32 {
+            return As.u32(self.arr.len);
+        }
+
+        pub fn isEmpty(self: *Self) bool {
+            return self.front() == self.end() and self.lastOperation() == Self.REMOVE;
+        }
+
+        pub fn isFull(self: *Self) bool {
+            return self.front() == self.end() and self.lastOperation() == Self.ADD;
+        }
+
+        pub fn add(self: *Self, item: T) void {
+            if (self.isFull()) {
+                const allocator = allocatorPtr.*;
+                const old = self.arr;
+                const oldCapacity = old.len;
+                self.arr = allocator.alloc(T, oldCapacity * 2) catch @panic("Queue mem alloc fail");
+                
+                var i = As.usize(self.front());
+                var newIdx: usize = 0;
+                while (newIdx < oldCapacity) {
+                    self.arr[newIdx] = old[i];
+                    i = (i + 1) % oldCapacity;
+                    newIdx += 1;
+                }
+                self.fields.front = 0;
+                self.fields.end = @as(u31, @intCast(newIdx));
+
+                allocator.free(old);
+            }
+            self.arr[As.usize(self.end())] = item;
+            self.fields.end = @as(u31, @intCast((self.end() + 1) % As.u32(self.arr.len)));
+            self.fields.lastOp = Self.ADD;
+        }
+
+        pub fn remove(self: *Self) ?T {
+            if (self.isEmpty()) {
+                return null;
+            }
+            const item = self.arr[As.usize(self.front())];
+            self.fields.front = @as(u31, @intCast((self.front() + 1) % As.u32(self.arr.len)));
+            self.fields.lastOp = Self.REMOVE;
+            return item;
+        }
+
+        pub fn peek(self: *Self) ?T {
+            if (self.isEmpty()) {
+                return null;
+            }
+            return self.arr[As.usize(self.front())];
+        }
+
+        pub fn deallocContents(self: *Self) void {
+            var allocator = allocatorPtr.*;
+            
+            var i = As.usize(self.front());
+            while (i != self.end()) {
+                allocator.free(self.arr[i]);
+                i = (i + 1) % self.arr.len;
+            }
+        }
+
+        pub fn toString(self: *Self) String {
+            var out = String.alloc(self.size() * 5);
+            
+            var i = As.usize(self.front());
+            while (i != self.end()) {
+                var temp = fmt(self.arr[i]);
+                defer temp.dealloc();
+                temp.concat(", ");
+                out.concat(temp);
+
+                i = (i + 1) % self.arr.len;
+            }
+            
+            return out;
+        }
+    };
+}
+
 pub const String = struct {
     viewStart: u32 = 0,
     viewEnd: u32 = 0,
@@ -1138,14 +1386,17 @@ pub const String = struct {
     }
 
     pub fn allocFrom(data_: anytype) String {
-        if (@TypeOf(data_) == String) {
+        const dataType = @TypeOf(data_);
+        const dataTypeInfo = @typeInfo(dataType);
+        if (dataType == String) {
             var data = data_;
             const temp = data.clone();
             return temp;
-        } else if (@typeInfo(@TypeOf(data_)) == .@"struct") {
+        } else if (dataTypeInfo == .@"struct") {
             var temp = String.allocFrom(".{\n");
-            inline for (@typeInfo(@TypeOf(data_)).@"struct".fields) |field| {
+            inline for (dataTypeInfo.@"struct".fields) |field| {
                 const value = @field(data_, field.name);
+                // const value: u32 = 123;
                 if (@typeInfo(@TypeOf(value)) == .@"struct") {
                     temp.concat("    .");
                     temp.concat(field.name);
@@ -1240,13 +1491,22 @@ pub const String = struct {
         };
     }
 
-    pub fn usingRawString(_cstring: [:0]const u8) String {
-        var bytes = Uint8Array.using(@constCast(_cstring));
-        bytes.len = As.u32(_cstring.len + 1);
+    pub fn usingCString(_cstring: [*c]const u8) String {
+        var strLen: usize = 0;
+        while (_cstring[strLen] != 0) {
+            strLen += 1;
+        }
+        const zstring = _cstring[0..strLen : 0];
+        return usingRawString(zstring);
+    }
+
+    pub fn usingRawString(_zstring: [:0]const u8) String {
+        var bytes = Uint8Array.using(@constCast(_zstring));
+        bytes.len = As.u32(_zstring.len + 1);
         bytes.buffer.len += 1;
         return String{
             .viewStart = 0,
-            .viewEnd = As.u32(_cstring.len),
+            .viewEnd = As.u32(_zstring.len),
             .bytes = bytes,
             .isSlice = false
         };
@@ -1472,10 +1732,10 @@ pub const String = struct {
         };
     }
 
-    pub fn split(self: *const String, str: anytype) Array(String) {
+    pub fn split(self: *const String, str: anytype) ArrayList(String) {
         var delimiter: String = undefined;
         var needsFreeing = false;
-        var out = Array(String).alloc(0);
+        var out = ArrayList(String).alloc(0);
         switch (@TypeOf(str)) {
             String => {
                 delimiter = str;
@@ -1715,6 +1975,62 @@ pub const String = struct {
 };
 
 pub const Int = enum {
+    pub const MAX = struct {
+        pub const @"u8"  = Math.comptime_pow(2, 8) - 1;
+        pub const @"u16" = Math.comptime_pow(2, 16) - 1;
+        pub const @"u32" = Math.comptime_pow(2, 32) - 1;
+        pub const @"u64" = Math.comptime_pow(2, 64) - 1;
+
+        pub const @"i8"  = Math.comptime_pow(2, 8 - 1) - 1;
+        pub const @"i16" = Math.comptime_pow(2, 16 - 1) - 1;
+        pub const @"i32" = Math.comptime_pow(2, 32 - 1) - 1;
+        pub const @"i64" = Math.comptime_pow(2, 64 - 1) - 1;
+    };
+
+    pub const MIN = struct {
+        pub const @"u8"  = 0;
+        pub const @"u16" = 0;
+        pub const @"u32" = 0;
+        pub const @"u64" = 0;
+
+        pub const @"i8"  = -Math.comptime_pow(2, 8 - 1);
+        pub const @"i16" = -Math.comptime_pow(2, 16 - 1);
+        pub const @"i32" = -Math.comptime_pow(2, 32 - 1);
+        pub const @"i64" = -Math.comptime_pow(2, 64 - 1);
+    };
+
+    pub const SIZE = struct {
+        pub const BYTES = struct {
+            pub const @"u8"  = @typeInfo(u8).int.bits / 8;
+            pub const @"u16" = @typeInfo(u16).int.bits / 8;
+            pub const @"u32" = @typeInfo(u32).int.bits / 8;
+            pub const @"u64" = @typeInfo(u64).int.bits / 8;
+
+            pub const @"i8"  = @typeInfo(i8).int.bits / 8;
+            pub const @"i16" = @typeInfo(i16).int.bits / 8;
+            pub const @"i32" = @typeInfo(i32).int.bits / 8;
+            pub const @"i64" = @typeInfo(i64).int.bits / 8;
+
+            pub const @"f32" = @typeInfo(f32).float.bits / 8;
+            pub const @"f64" = @typeInfo(f64).float.bits / 8;
+        };
+        
+        pub const BITS = struct {
+            pub const @"u8"  = @typeInfo(u8).int.bits;
+            pub const @"u16" = @typeInfo(u16).int.bits;
+            pub const @"u32" = @typeInfo(u32).int.bits;
+            pub const @"u64" = @typeInfo(u64).int.bits;
+
+            pub const @"i8"  = @typeInfo(i8).int.bits;
+            pub const @"i16" = @typeInfo(i16).int.bits;
+            pub const @"i32" = @typeInfo(i32).int.bits;
+            pub const @"i64" = @typeInfo(i64).int.bits;
+
+            pub const @"f32" = @typeInfo(f32).float.bits;
+            pub const @"f64" = @typeInfo(f64).float.bits;
+        };
+    };
+
     var base10 = "0123456789";
     var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     var codeKey = "0123456789abcdefghijklmnopqrstuvwxyz";

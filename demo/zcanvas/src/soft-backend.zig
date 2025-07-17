@@ -1,7 +1,7 @@
 const vexlib = @import("../../vexlib/src/vexlib.zig");
 const As = vexlib.As;
 const Math = vexlib.Math;
-const Array = vexlib.Array;
+const Array = vexlib.ArrayList;
 const String = vexlib.String;
 
 const zcanvas = @import("./zcanvas.zig");
@@ -25,7 +25,7 @@ fn computeTransform(transforms: Array(Transform)) JoinedTransform {
         .scale = [2]f32{1.0, 1.0}
     };
     var i: u32 = 0; while (i < transforms.len) : (i += 1) {
-        const trans = transforms.get(i).*;
+        const trans = transforms.get(i);
         switch (trans) {
             .translate => {
                 out.translate[0] += trans.translate[0];
