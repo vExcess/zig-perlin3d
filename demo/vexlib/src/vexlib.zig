@@ -1,4 +1,4 @@
-// vexlib - v0.0.28
+// vexlib - v0.0.29
 //
 // ABOUT
 //   vexlib is a "standard" library for writing Web Assembly compatible
@@ -971,6 +971,10 @@ pub fn ArrayList(comptime T: type) type {
             return -1;
         }
 
+        pub fn contains(self: *const Self, str: anytype) bool {
+            return self.indexOf(str) >= 0;
+        }
+
         pub fn join(self: *const Self, separator_: anytype) String {
             var stringSeparator: String = undefined;
             var needToFreeSeparator = false;
@@ -1035,6 +1039,36 @@ pub fn ArrayList(comptime T: type) type {
             return Self{
                 .buffer = self.buffer[start..end]
             };
+        }
+    };
+}
+
+pub fn Stack(comptime T: type) type {
+    return struct {
+        items: ArrayList(T) = undefined,
+        
+        const Self = @This();
+
+        pub fn alloc(_capacity: u32) Self {
+            return Self{
+                .items = ArrayList(T).alloc(_capacity)
+            };
+        }
+
+        fn push(self: *Self, item: T) void {
+            self.items.add(item);
+        }
+
+        fn pop(self: *Self) ?T {
+            return self.items.removeLast();
+        }
+
+        fn top(self: *Self) ?T {
+            return self.items.last();
+        }
+
+        fn size(self: *Self) u32 {
+            return self.items.len;
         }
     };
 }
@@ -1234,6 +1268,10 @@ pub fn Map(comptime KeyType: type, comptime ValueType: type) type {
             return null;
         }
     };
+}
+
+pub fn Set(comptime KeyType: type) type {
+    return Map(KeyType, void);
 }
 
 pub fn Queue(comptime T: type) type {
@@ -1807,6 +1845,18 @@ pub const String = struct {
             temp.repeat(As.u32(padAmount) / temp.len());
             self.concat(temp.slice(0, As.u32(padAmount)));
         }
+    }
+
+    pub fn toLowerCase(self: *String) String {
+        var str = self.clone();
+        var i: u32 = 0;
+        while (i < str.len()) : (i += 1) {
+            const c = str.charAt(i);
+            if (c >= 'A' and c <= 'Z') {
+                str.setChar(i, c + 32);
+            }
+        }
+        return str;
     }
 
     pub fn lowerCase(self: *String) void {
