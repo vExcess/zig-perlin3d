@@ -137,7 +137,7 @@ pub const SDLWindow = struct {
 
         switch (self.canvas.renderer) {
             .Cairo => {
-                const texture = sdl.SDL_CreateTextureFromSurface(self.sdlRenderer, ctx._cairoItems.sdlSurface);
+                const texture = sdl.SDL_CreateTextureFromSurface(self.sdlRenderer, @ptrFromInt(@intFromPtr(ctx._cairoItems.sdlSurface)));
                 if (texture == null) {
                     return SDLWindowError.RenderFail;
                 }
